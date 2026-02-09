@@ -184,6 +184,7 @@ export default function Home() {
     activeFolderId === "all"
       ? notes
       : notes.filter((n) => n.folderId === activeFolderId)
+      
   )
     .filter(
       (n) =>
@@ -371,7 +372,7 @@ export default function Home() {
             <button
               onClick={addNote}
               disabled={folders.length === 0}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 text-white hover:bg-indigo-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-600 text-white hover:bg-emerald-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               title={
                 folders.length === 0
                   ? "Create a customer folder first"
