@@ -4,14 +4,16 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import {
   FolderOpen,
   FolderPlus,
+  Folder as FolderIcon,
   FilePlus,
   Search,
   Trash2,
   Pencil,
-  Check,
   X,
   FileText,
   ChevronRight,
+  ChevronDown,
+  Plus,
   StickyNote,
   Users,
 } from "lucide-react";
@@ -20,6 +22,7 @@ import {
 
 interface Folder {
   id: string;
+  parentId: string | null; // null = top-level customer, string = subfolder
   name: string;
   createdAt: number;
 }
@@ -67,7 +70,9 @@ export default function Home() {
   const [folderDraft, setFolderDraft] = useState("");
   const [search, setSearch] = useState("");
   const [loaded, setLoaded] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
+    new Set()
+  );
 
   const renameRef = useRef<HTMLInputElement>(null);
   const titleRef = useRef<HTMLInputElement>(null);
@@ -78,7 +83,15 @@ export default function Home() {
     try {
       const f = localStorage.getItem("cn_folders");
       const n = localStorage.getItem("cn_notes");
-      if (f) setFolders(JSON.parse(f));
+      if (f) {
+        const parsed: Folder[] = JSON.parse(f);
+        // Migrate old folders without parentId
+        const migrated = parsed.map((folder) => ({
+          ...folder,
+          parentId: folder.parentId ?? null,
+        }));
+        setFolders(migrated);
+      }
       if (n) setNotes(JSON.parse(n));
     } catch {
       /* ignore */
@@ -103,15 +116,63 @@ export default function Home() {
     }
   }, [editingFolderId]);
 
+  // ─── Folder helpers ──────────────────────────────────────────────────────
+
+  const topLevelFolders = folders.filter((f) => f.parentId === null);
+
+  const getSubfolders = useCallback(
+    (parentId: string) => folders.filter((f) => f.parentId === parentId),
+    [folders]
+  );
+
+  const toggleExpanded = useCallback((folderId: string) => {
+    setExpandedFolders((prev) => {
+      const next = new Set(prev);
+      if (next.has(folderId)) next.delete(folderId);
+      else next.add(folderId);
+      return next;
+    });
+  }, []);
+
+  /** Get all folder IDs that are descendants of a given folder (inclusive) */
+  const getFolderAndDescendants = useCallback(
+    (folderId: string): string[] => {
+      const children = folders.filter((f) => f.parentId === folderId);
+      return [folderId, ...children.flatMap((c) => getFolderAndDescendants(c.id))];
+    },
+    [folders]
+  );
+
   // ─── Folder ops ──────────────────────────────────────────────────────────
 
   const addFolder = useCallback(() => {
-    const f: Folder = { id: uid(), name: "New Customer", createdAt: Date.now() };
+    const f: Folder = {
+      id: uid(),
+      parentId: null,
+      name: "New Customer",
+      createdAt: Date.now(),
+    };
     setFolders((prev) => [...prev, f]);
     setActiveFolderId(f.id);
     setActiveNoteId(null);
     setEditingFolderId(f.id);
     setFolderDraft("New Customer");
+  }, []);
+
+  const addSubfolder = useCallback((parentId: string) => {
+    const f: Folder = {
+      id: uid(),
+      parentId,
+      name: "New Subfolder",
+      createdAt: Date.now(),
+    };
+    setFolders((prev) => [...prev, f]);
+    setActiveFolderId(f.id);
+    setActiveNoteId(null);
+    setEditingFolderId(f.id);
+    setFolderDraft("New Subfolder");
+    // Auto-expand parent
+    setExpandedFolders((prev) => new Set(prev).add(parentId));
   }, []);
 
   const commitRename = useCallback(
@@ -130,14 +191,16 @@ export default function Home() {
 
   const deleteFolder = useCallback(
     (id: string) => {
-      setFolders((prev) => prev.filter((f) => f.id !== id));
-      setNotes((prev) => prev.filter((n) => n.folderId !== id));
-      if (activeFolderId === id) {
+      // Get all descendant folder IDs to delete
+      const idsToDelete = new Set(getFolderAndDescendants(id));
+      setFolders((prev) => prev.filter((f) => !idsToDelete.has(f.id)));
+      setNotes((prev) => prev.filter((n) => !idsToDelete.has(n.folderId)));
+      if (idsToDelete.has(activeFolderId)) {
         setActiveFolderId("all");
         setActiveNoteId(null);
       }
     },
-    [activeFolderId]
+    [activeFolderId, getFolderAndDescendants]
   );
 
   // ─── Note ops ────────────────────────────────────────────────────────────
@@ -146,7 +209,10 @@ export default function Home() {
     let folderId = activeFolderId;
     if (folderId === "all") {
       if (folders.length === 0) return;
-      folderId = folders[0].id;
+      // Pick first top-level folder
+      const topLevel = folders.find((f) => f.parentId === null);
+      if (!topLevel) return;
+      folderId = topLevel.id;
       setActiveFolderId(folderId);
     }
     const n: Note = {
@@ -180,11 +246,15 @@ export default function Home() {
 
   // ─── Derived state ──────────────────────────────────────────────────────
 
-  const visibleNotes = (
+  const activeFolderIds =
     activeFolderId === "all"
+      ? null
+      : new Set(getFolderAndDescendants(activeFolderId));
+
+  const visibleNotes = (
+    activeFolderIds === null
       ? notes
-      : notes.filter((n) => n.folderId === activeFolderId)
-      
+      : notes.filter((n) => activeFolderIds.has(n.folderId))
   )
     .filter(
       (n) =>
@@ -196,10 +266,32 @@ export default function Home() {
 
   const activeNote = notes.find((n) => n.id === activeNoteId) ?? null;
   const activeFolder = folders.find((f) => f.id === activeFolderId) ?? null;
-  const noteCount = (fid: string) =>
-    notes.filter((n) => n.folderId === fid).length;
+
+  /** Count notes in a folder and all its descendants */
+  const noteCount = useCallback(
+    (fid: string) => {
+      const allIds = new Set(getFolderAndDescendants(fid));
+      return notes.filter((n) => allIds.has(n.folderId)).length;
+    },
+    [notes, getFolderAndDescendants]
+  );
+
   const folderName = (fid: string) =>
     folders.find((f) => f.id === fid)?.name ?? "Unknown";
+
+  /** Build breadcrumb path for a folder */
+  const folderPath = useCallback(
+    (fid: string): string => {
+      const folder = folders.find((f) => f.id === fid);
+      if (!folder) return "Unknown";
+      if (folder.parentId) {
+        const parent = folders.find((f) => f.id === folder.parentId);
+        return parent ? `${parent.name} / ${folder.name}` : folder.name;
+      }
+      return folder.name;
+    },
+    [folders]
+  );
 
   // ─── Loading state ──────────────────────────────────────────────────────
 
@@ -267,7 +359,7 @@ export default function Home() {
 
         {/* Folder list */}
         <div className="flex-1 overflow-y-auto px-3 pb-3 space-y-0.5">
-          {folders.length === 0 && (
+          {topLevelFolders.length === 0 && (
             <div className="px-3 py-8 text-center">
               <Users size={28} className="mx-auto text-slate-300 mb-2" />
               <p className="text-xs text-slate-400">No customers yet</p>
@@ -280,84 +372,206 @@ export default function Home() {
             </div>
           )}
 
-          {folders.map((folder) => (
-            <div
-              key={folder.id}
-              className={`group folder-item flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer ${
-                activeFolderId === folder.id
-                  ? "bg-indigo-50 text-indigo-700"
-                  : "text-slate-600 hover:bg-slate-100"
-              }`}
-              onClick={() => {
-                if (editingFolderId !== folder.id) {
-                  setActiveFolderId(folder.id);
-                  setActiveNoteId(null);
-                }
-              }}
-            >
-              <FolderOpen
-                size={16}
-                className={
-                  activeFolderId === folder.id
-                    ? "text-indigo-500"
-                    : "text-slate-400"
-                }
-              />
+          {topLevelFolders.map((folder) => {
+            const subs = getSubfolders(folder.id);
+            const isExpanded = expandedFolders.has(folder.id);
+            const hasSubs = subs.length > 0;
 
-              {editingFolderId === folder.id ? (
-                <form
-                  className="flex-1 flex items-center gap-1"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    commitRename(folder.id);
+            return (
+              <div key={folder.id}>
+                {/* Customer folder row */}
+                <div
+                  className={`group folder-item flex items-center gap-1 px-2 py-2 rounded-lg cursor-pointer ${
+                    activeFolderId === folder.id
+                      ? "bg-indigo-50 text-indigo-700"
+                      : "text-slate-600 hover:bg-slate-100"
+                  }`}
+                  onClick={() => {
+                    if (editingFolderId !== folder.id) {
+                      setActiveFolderId(folder.id);
+                      setActiveNoteId(null);
+                    }
                   }}
                 >
-                  <input
-                    ref={renameRef}
-                    value={folderDraft}
-                    onChange={(e) => setFolderDraft(e.target.value)}
-                    onBlur={() => commitRename(folder.id)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Escape") setEditingFolderId(null);
+                  {/* Expand/collapse toggle */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleExpanded(folder.id);
                     }}
-                    className="flex-1 bg-white border border-indigo-300 rounded px-1.5 py-0.5 text-sm text-slate-800 focus:ring-1 focus:ring-indigo-400"
-                    onClick={(e) => e.stopPropagation()}
+                    className={`p-0.5 rounded hover:bg-slate-200/60 transition-colors ${
+                      hasSubs
+                        ? "text-slate-400"
+                        : "text-transparent pointer-events-none"
+                    }`}
+                  >
+                    {isExpanded ? (
+                      <ChevronDown size={13} />
+                    ) : (
+                      <ChevronRight size={13} />
+                    )}
+                  </button>
+
+                  <FolderOpen
+                    size={16}
+                    className={
+                      activeFolderId === folder.id
+                        ? "text-indigo-500"
+                        : "text-slate-400"
+                    }
                   />
-                </form>
-              ) : (
-                <>
-                  <span className="flex-1 text-sm truncate font-medium">
-                    {folder.name}
-                  </span>
-                  <span className="text-xs opacity-50 mr-1">
-                    {noteCount(folder.id)}
-                  </span>
-                  <div className="hidden group-hover:flex items-center gap-0.5">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        startRename(folder);
+
+                  {editingFolderId === folder.id ? (
+                    <form
+                      className="flex-1 flex items-center gap-1"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        commitRename(folder.id);
                       }}
-                      className="p-1 rounded hover:bg-slate-200 text-slate-400 hover:text-slate-600"
-                      title="Rename"
                     >
-                      <Pencil size={12} />
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        deleteFolder(folder.id);
-                      }}
-                      className="p-1 rounded hover:bg-red-50 text-slate-400 hover:text-red-500"
-                      title="Delete"
-                    >
-                      <Trash2 size={12} />
-                    </button>
+                      <input
+                        ref={renameRef}
+                        value={folderDraft}
+                        onChange={(e) => setFolderDraft(e.target.value)}
+                        onBlur={() => commitRename(folder.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Escape") setEditingFolderId(null);
+                        }}
+                        className="flex-1 bg-white border border-indigo-300 rounded px-1.5 py-0.5 text-sm text-slate-800 focus:ring-1 focus:ring-indigo-400"
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </form>
+                  ) : (
+                    <>
+                      <span className="flex-1 text-sm truncate font-medium ml-0.5">
+                        {folder.name}
+                      </span>
+                      <span className="text-xs opacity-50 mr-1">
+                        {noteCount(folder.id)}
+                      </span>
+                      <div className="hidden group-hover:flex items-center gap-0.5">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            addSubfolder(folder.id);
+                          }}
+                          className="p-1 rounded hover:bg-indigo-100 text-slate-400 hover:text-indigo-600"
+                          title="Add subfolder"
+                        >
+                          <Plus size={12} />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            startRename(folder);
+                          }}
+                          className="p-1 rounded hover:bg-slate-200 text-slate-400 hover:text-slate-600"
+                          title="Rename"
+                        >
+                          <Pencil size={12} />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deleteFolder(folder.id);
+                          }}
+                          className="p-1 rounded hover:bg-red-50 text-slate-400 hover:text-red-500"
+                          title="Delete"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* Subfolders */}
+                {isExpanded && subs.length > 0 && (
+                  <div className="ml-4 pl-2 border-l border-slate-200 space-y-0.5 mt-0.5">
+                    {subs.map((sub) => (
+                      <div
+                        key={sub.id}
+                        className={`group folder-item flex items-center gap-2 px-2.5 py-1.5 rounded-lg cursor-pointer ${
+                          activeFolderId === sub.id
+                            ? "bg-indigo-50 text-indigo-700"
+                            : "text-slate-500 hover:bg-slate-100"
+                        }`}
+                        onClick={() => {
+                          if (editingFolderId !== sub.id) {
+                            setActiveFolderId(sub.id);
+                            setActiveNoteId(null);
+                          }
+                        }}
+                      >
+                        <FolderIcon
+                          size={14}
+                          className={
+                            activeFolderId === sub.id
+                              ? "text-indigo-400"
+                              : "text-slate-400"
+                          }
+                        />
+
+                        {editingFolderId === sub.id ? (
+                          <form
+                            className="flex-1 flex items-center gap-1"
+                            onSubmit={(e) => {
+                              e.preventDefault();
+                              commitRename(sub.id);
+                            }}
+                          >
+                            <input
+                              ref={renameRef}
+                              value={folderDraft}
+                              onChange={(e) => setFolderDraft(e.target.value)}
+                              onBlur={() => commitRename(sub.id)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Escape")
+                                  setEditingFolderId(null);
+                              }}
+                              className="flex-1 bg-white border border-indigo-300 rounded px-1.5 py-0.5 text-sm text-slate-800 focus:ring-1 focus:ring-indigo-400"
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                          </form>
+                        ) : (
+                          <>
+                            <span className="flex-1 text-[13px] truncate">
+                              {sub.name}
+                            </span>
+                            <span className="text-[10px] opacity-50 mr-1">
+                              {noteCount(sub.id)}
+                            </span>
+                            <div className="hidden group-hover:flex items-center gap-0.5">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  startRename(sub);
+                                }}
+                                className="p-0.5 rounded hover:bg-slate-200 text-slate-400 hover:text-slate-600"
+                                title="Rename"
+                              >
+                                <Pencil size={11} />
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  deleteFolder(sub.id);
+                                }}
+                                className="p-0.5 rounded hover:bg-red-50 text-slate-400 hover:text-red-500"
+                                title="Delete"
+                              >
+                                <Trash2 size={11} />
+                              </button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    ))}
                   </div>
-                </>
-              )}
-            </div>
-          ))}
+                )}
+              </div>
+            );
+          })}
         </div>
       </aside>
 
@@ -366,8 +580,10 @@ export default function Home() {
         {/* Header */}
         <div className="px-4 pt-4 pb-3 border-b border-slate-100">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-base font-semibold text-slate-800">
-              {activeFolder?.name ?? "All Notes"}
+            <h2 className="text-base font-semibold text-slate-800 truncate">
+              {activeFolderId === "all"
+                ? "All Notes"
+                : folderPath(activeFolderId)}
             </h2>
             <button
               onClick={addNote}
@@ -461,7 +677,7 @@ export default function Home() {
                         </span>
                         {activeFolderId === "all" && (
                           <span className="text-[10px] px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded">
-                            {folderName(note.folderId)}
+                            {folderPath(note.folderId)}
                           </span>
                         )}
                       </div>
@@ -492,7 +708,7 @@ export default function Home() {
             <div className="px-8 pt-6 pb-4 border-b border-slate-100">
               <div className="flex items-center gap-2 text-xs text-slate-400 mb-3">
                 <span className="px-2 py-0.5 bg-slate-100 rounded text-slate-500 font-medium">
-                  {folderName(activeNote.folderId)}
+                  {folderPath(activeNote.folderId)}
                 </span>
                 <span>·</span>
                 <span>
