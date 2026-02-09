@@ -1,0 +1,59 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  overflow: hidden;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+/* Smooth transitions */
+.folder-item,
+.note-card {
+  transition: all 0.15s ease;
+}
+
+/* Textarea auto-resize helper */
+textarea {
+  field-sizing: content;
+}
+
+/* Focus styles */
+input:focus,
+textarea:focus {
+  outline: none;
+}
+
+/* Placeholder styling */
+input::placeholder,
+textarea::placeholder {
+  color: #9ca3af;
+}
