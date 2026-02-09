@@ -59,6 +59,7 @@ const preview = (text: string, max = 80) => {
   return text.length > max ? text.slice(0, max) + "…" : text;
 };
 
+
 // ─── Main App ────────────────────────────────────────────────────────────────
 
 export default function Home() {
@@ -449,23 +450,23 @@ export default function Home() {
                       <span className="text-xs opacity-50 mr-1">
                         {noteCount(folder.id)}
                       </span>
-                      <div className="hidden group-hover:flex items-center gap-0.5">
+                      <div className="flex items-center gap-0.5">
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             addSubfolder(folder.id);
                           }}
-                          className="p-1 rounded hover:bg-indigo-100 text-slate-400 hover:text-indigo-600"
+                          className="p-1 rounded hover:bg-indigo-100 text-indigo-400 hover:text-indigo-600"
                           title="Add subfolder"
                         >
-                          <Plus size={12} />
+                          <FolderPlus size={13} />
                         </button>
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             startRename(folder);
                           }}
-                          className="p-1 rounded hover:bg-slate-200 text-slate-400 hover:text-slate-600"
+                          className="p-1 rounded hover:bg-slate-200 text-slate-400 hover:text-slate-600 hidden group-hover:block"
                           title="Rename"
                         >
                           <Pencil size={12} />
@@ -475,7 +476,7 @@ export default function Home() {
                             e.stopPropagation();
                             deleteFolder(folder.id);
                           }}
-                          className="p-1 rounded hover:bg-red-50 text-slate-400 hover:text-red-500"
+                          className="p-1 rounded hover:bg-red-50 text-slate-400 hover:text-red-500 hidden group-hover:block"
                           title="Delete"
                         >
                           <Trash2 size={12} />
@@ -585,19 +586,32 @@ export default function Home() {
                 ? "All Notes"
                 : folderPath(activeFolderId)}
             </h2>
-            <button
-              onClick={addNote}
-              disabled={folders.length === 0}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-600 text-white hover:bg-emerald-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              title={
-                folders.length === 0
-                  ? "Create a customer folder first"
-                  : "New note"
-              }
-            >
-              <FilePlus size={14} />
-              New Note
-            </button>
+            <div className="flex items-center gap-1.5">
+              {/* Add Subfolder button — visible when a top-level customer folder is selected */}
+              {activeFolder && activeFolder.parentId === null && (
+                <button
+                  onClick={() => addSubfolder(activeFolderId)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors"
+                  title="Add subfolder to this customer"
+                >
+                  <FolderPlus size={14} />
+                  Subfolder
+                </button>
+              )}
+              <button
+                onClick={addNote}
+                disabled={folders.length === 0}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-600 text-white hover:bg-emerald-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                title={
+                  folders.length === 0
+                    ? "Create a customer folder first"
+                    : "New note"
+                }
+              >
+                <FilePlus size={14} />
+                New Note
+              </button>
+            </div>
           </div>
 
           {/* Search */}
