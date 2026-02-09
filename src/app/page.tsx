@@ -351,7 +351,7 @@ export default function Home() {
           </span>
           <button
             onClick={addFolder}
-            className="p-1 rounded-md text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+            className="p-1 rounded-md text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors"
             title="New customer folder"
           >
             <FolderPlus size={15} />
@@ -366,7 +366,7 @@ export default function Home() {
               <p className="text-xs text-slate-400">No customers yet</p>
               <button
                 onClick={addFolder}
-                className="mt-2 text-xs text-indigo-500 hover:text-indigo-700 font-medium"
+                className="mt-2 text-xs text-emerald-600 hover:text-emerald-800 font-medium"
               >
                 + Add your first customer
               </button>
@@ -456,7 +456,7 @@ export default function Home() {
                             e.stopPropagation();
                             addSubfolder(folder.id);
                           }}
-                          className="p-1 rounded hover:bg-indigo-100 text-indigo-400 hover:text-indigo-600"
+                          className="p-1 rounded hover:bg-emerald-100 text-emerald-500 hover:text-emerald-700"
                           title="Add subfolder"
                         >
                           <FolderPlus size={13} />
@@ -591,7 +591,7 @@ export default function Home() {
               {activeFolder && activeFolder.parentId === null && (
                 <button
                   onClick={() => addSubfolder(activeFolderId)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors"
                   title="Add subfolder to this customer"
                 >
                   <FolderPlus size={14} />
@@ -653,7 +653,7 @@ export default function Home() {
               {!search && folders.length > 0 && (
                 <button
                   onClick={addNote}
-                  className="mt-2 text-xs text-indigo-500 hover:text-indigo-700 font-medium"
+                  className="mt-2 text-xs text-emerald-600 hover:text-emerald-800 font-medium"
                 >
                   + Create your first note
                 </button>
@@ -770,7 +770,7 @@ export default function Home() {
               {folders.length > 0 && (
                 <button
                   onClick={addNote}
-                  className="mt-4 px-4 py-2 rounded-lg text-sm font-medium bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
+                  className="mt-4 px-4 py-2 rounded-lg text-sm font-medium bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
                 >
                   Create a Note
                 </button>
